@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db, Base, engine
-from app.models import User
-from app.schemas import UserLogin, UserResponse, Token
+from app.models import User, Flashcard
+from app.schemas import UserLogin, UserResponse, Token, FlashcardCreate, FlashcardResponse, UserWithFlashcardsResponse, FlashcardStatusEnum
 from app.schemas import UserLogin,UserSignup, UserResponse, Token
 from app.auth import verify_password, create_access_token
 from fastapi.security import OAuth2PasswordBearer
@@ -85,10 +85,51 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
-@app.get("/me")
-def read_me(current_user: User = Depends(get_current_user)):
+
+@app.get("/me", response_model=UserWithFlashcardsResponse)
+def read_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Получаем флешкарты текущего пользователя
+    flashcards = db.query(Flashcard).filter(Flashcard.user_id == current_user.id).all()
+    
+    # Возвращаем объект с вложенными флешкартами
     return {
         "id": current_user.id,
         "full_name": current_user.full_name,
-        "email": current_user.email
+        "email": current_user.email,
+        "flashcards": flashcards
     }
+
+
+
+@app.post("/flashcards", response_model=FlashcardResponse)
+def create_flashcard(
+    flashcard: FlashcardCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Создаём флешкарту с user_id текущего пользователя
+    db_flashcard = Flashcard(
+        question=flashcard.question,
+        answer=flashcard.answer,
+        status=FlashcardStatusEnum.NEW,
+        user_id=current_user.id
+    )
+    
+    db.add(db_flashcard)
+    db.commit()
+    db.refresh(db_flashcard)
+    return db_flashcard
+
+@app.get("/flashcards", response_model=list[FlashcardResponse])
+def get_flashcards(
+    db: Session = Depends(get_db),
+):  
+    flashcards = db.query(Flashcard).all()
+    return flashcards
+
+@app.get("/flashcards/statuses")
+def get_flashcard_statuses():
+    return [status.value for status in FlashcardStatusEnum]

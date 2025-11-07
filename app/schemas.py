@@ -1,5 +1,9 @@
 from pydantic import BaseModel, EmailStr, validator
+from datetime import datetime
+from enum import Enum
+from typing import List
 
+# User Schemas
 class UserSignup(BaseModel):
     full_name: str
     email: EmailStr
@@ -23,6 +27,7 @@ class UserLogin(BaseModel):
     password: str
 
 class UserResponse(BaseModel):
+    id: int
     full_name: str
     email: EmailStr
 
@@ -32,3 +37,42 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+# Flashcard Schemas
+
+class FlashcardStatusEnum(str, Enum):
+    NEW = "new"
+    INPROGRESS = "inprogress"
+    DONE = "done"
+
+class FlashcardBase(BaseModel):
+    question: str
+    answer: str
+    status: FlashcardStatusEnum = FlashcardStatusEnum.NEW
+
+
+class FlashcardCreate(BaseModel):
+    question: str
+    answer: str
+    status: FlashcardStatusEnum = FlashcardStatusEnum.NEW
+
+class FlashcardResponse(BaseModel):
+    id: int
+    question: str
+    answer: str
+    status: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    user:UserResponse
+    class Config:
+        orm_mode = True
+
+
+class UserWithFlashcardsResponse(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    flashcards: List[FlashcardResponse] = []
+
+    class Config:
+        orm_mode = True
