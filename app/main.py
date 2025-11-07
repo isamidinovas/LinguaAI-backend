@@ -101,7 +101,7 @@ def read_me(current_user: User = Depends(get_current_user), db: Session = Depend
 
 
 
-@app.post("/flashcards", response_model=FlashcardResponse)
+@app.post("/flashcards", response_model=FlashcardResponse, status_code=201)
 def create_flashcard(
     flashcard: FlashcardCreate,
     db: Session = Depends(get_db),
@@ -133,3 +133,39 @@ def get_flashcards(
 @app.get("/flashcards/statuses")
 def get_flashcard_statuses():
     return [status.value for status in FlashcardStatusEnum]
+
+
+
+@app.put("/flashcards/{flashcard_id}", response_model=FlashcardResponse)
+def update_flashcard(
+    flashcard_id: int,
+    flashcard_update: FlashcardCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    db_flashcard = db.query(Flashcard).filter(Flashcard.id == flashcard_id, Flashcard.user_id == current_user.id).first()
+    if not db_flashcard:
+        raise HTTPException(status_code=404, detail="Flashcard not found")
+    
+    db_flashcard.question = flashcard_update.question
+    db_flashcard.answer = flashcard_update.answer
+    db_flashcard.status = flashcard_update.status
+    
+    db.commit()
+    db.refresh(db_flashcard)
+    return db_flashcard
+
+
+@app.delete("/flashcards/{flashcard_id}", status_code=204)
+def delete_flashcard(
+    flashcard_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    db_flashcard = db.query(Flashcard).filter(Flashcard.id == flashcard_id, Flashcard.user_id == current_user.id).first()
+    if not db_flashcard:
+        raise HTTPException(status_code=404, detail="Flashcard not found")
+    
+    db.delete(db_flashcard)
+    db.commit()
+    return  
