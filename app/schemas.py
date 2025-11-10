@@ -38,12 +38,29 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 # Flashcard Schemas
 
 class FlashcardStatusEnum(str, Enum):
     NEW = "new"
     INPROGRESS = "inprogress"
     DONE = "done"
+
+class Languages(BaseModel):
+    code: str
+    id: int
+    class Config:
+        orm_mode = True
+
+
+class LanguageCreate(BaseModel):
+    code: str
+    
+class LanguageResponse(BaseModel):
+    code: str
+
+    class Config:
+        orm_mode = True
 
 class FlashcardBase(BaseModel):
     question: str
@@ -55,9 +72,13 @@ class FlashcardCreate(BaseModel):
     question: str
     answer: str
     status: FlashcardStatusEnum = FlashcardStatusEnum.NEW
+    language_code: str  
+    topic:str
 
 class FlashcardResponse(BaseModel):
     id: int
+    language_code: str  
+    topic:str
     question: str
     answer: str
     status: str
@@ -76,3 +97,12 @@ class UserWithFlashcardsResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+
+class FlashcardsPaginatedResponse(BaseModel):
+    total: int
+    items: list[FlashcardResponse]
+
+
+

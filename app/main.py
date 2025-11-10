@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db, Base, engine
-from app.models import User, Flashcard
-from app.schemas import UserLogin, UserResponse, Token, FlashcardCreate, FlashcardResponse, UserWithFlashcardsResponse, FlashcardStatusEnum
+from app.models import User, Flashcard, Languages
+from app.schemas import UserLogin, UserResponse, Token, FlashcardCreate, FlashcardResponse, UserWithFlashcardsResponse, FlashcardStatusEnum, LanguageResponse, LanguageCreate
+from app.schemas import FlashcardsPaginatedResponse
 from app.schemas import UserLogin,UserSignup, UserResponse, Token
 from app.auth import verify_password, create_access_token
 from fastapi.security import OAuth2PasswordBearer
@@ -10,6 +11,9 @@ from app.auth import get_password_hash
 from app.auth import SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 from fastapi import status
+from fastapi import Query
+
+from sqlalchemy import or_
 # Создать таблицы, если их нет
 Base.metadata.create_all(bind=engine)
 
@@ -110,12 +114,19 @@ def create_flashcard(
     if not current_user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    # Создаём флешкарту с user_id текущего пользователя
+    # Ищем язык по коду
+    language = db.query(Languages).filter_by(code=flashcard.language_code).first()
+    if not language:
+        raise HTTPException(status_code=404, detail="Language not found")
+    
+    # Создаём флешкарту с user_id и language_id
     db_flashcard = Flashcard(
         question=flashcard.question,
         answer=flashcard.answer,
+        topic=flashcard.topic,
         status=FlashcardStatusEnum.NEW,
-        user_id=current_user.id
+        user_id=current_user.id,
+        language_id=language.id
     )
     
     db.add(db_flashcard)
@@ -123,18 +134,50 @@ def create_flashcard(
     db.refresh(db_flashcard)
     return db_flashcard
 
-@app.get("/flashcards", response_model=list[FlashcardResponse])
+
+
+
+@app.get("/flashcards", response_model=FlashcardsPaginatedResponse)
 def get_flashcards(
     db: Session = Depends(get_db),
-):  
-    flashcards = db.query(Flashcard).all()
-    return flashcards
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None),
+):
+    query = db.query(Flashcard)
 
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(
+            or_(
+                Flashcard.question.ilike(pattern),
+                Flashcard.answer.ilike(pattern),
+            )
+        )
+
+    total = query.count()
+    items = query.offset(skip).limit(limit).all()
+
+    return {"total": total, "items": items}
+
+@app.get("/flashcards/{flashcard_id}", response_model=FlashcardResponse)
+def get_flashcard(
+    flashcard_id: int,
+    db: Session = Depends(get_db),
+):
+    db_flashcard = db.query(Flashcard).filter(Flashcard.id == flashcard_id).first()
+    if not db_flashcard:
+        raise HTTPException(status_code=404, detail="Flashcard not found")
+    return db_flashcard
+
+    
 @app.get("/flashcards/statuses")
 def get_flashcard_statuses():
     return [status.value for status in FlashcardStatusEnum]
 
-
+@app.get("/flashcards/languages")
+def get_flashcard_languages():
+    return [lang.value for lang in LanguagesEnum]
 
 @app.put("/flashcards/{flashcard_id}", response_model=FlashcardResponse)
 def update_flashcard(
@@ -169,3 +212,17 @@ def delete_flashcard(
     db.delete(db_flashcard)
     db.commit()
     return  
+
+@app.post("/languages", response_model=LanguageResponse, status_code=201)
+def create_language(language: LanguageCreate, db: Session = Depends(get_db)):
+    # language - это объект LanguageCreate, достаем строку
+    existing_language = db.query(Languages).filter(Languages.code == language.code).first()
+
+    if existing_language:
+        return existing_language
+
+    new_language = Languages(code=language.code, name=language.name)
+    db.add(new_language)
+    db.commit()
+    db.refresh(new_language)
+    return new_language

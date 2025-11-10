@@ -26,11 +26,21 @@ class Flashcard(Base):
     __tablename__ = "flashcards"
 
     id = Column(Integer, primary_key=True, index=True)
+    topic = Column(String, nullable=True)
+    language = Column(String, nullable=True)
     question = Column(String, nullable=False)
     answer = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    language_id = Column(Integer, ForeignKey("languages.id"), nullable=False) 
     status = Column(SqlEnum(FlashcardStatus), nullable=False, default=FlashcardStatus.NEW)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     user = relationship("User", back_populates="flashcards")
+    language_id = Column(Integer, ForeignKey("languages.id"), nullable=False) 
+
+class Languages(Base):
+    __tablename__ = "languages"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, nullable=False)
+
