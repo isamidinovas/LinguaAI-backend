@@ -27,7 +27,6 @@ class Flashcard(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     topic = Column(String, nullable=True)
-    language = Column(String, nullable=True)
     question = Column(String, nullable=False)
     answer = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -37,10 +36,17 @@ class Flashcard(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     user = relationship("User", back_populates="flashcards")
-    language_id = Column(Integer, ForeignKey("languages.id"), nullable=False) 
+    language = relationship("Languages", back_populates="flashcards")
+
+    @property
+    def language_code(self) -> str | None:
+        """Возвращает код языка для Pydantic сериализации"""
+        return self.language.code if self.language else None
 
 class Languages(Base):
     __tablename__ = "languages"
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, unique=True, nullable=False)
+
+    flashcards = relationship("Flashcard", back_populates="language")
 

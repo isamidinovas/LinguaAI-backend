@@ -136,15 +136,16 @@ def create_flashcard(
 
 
 
-
 @app.get("/flashcards", response_model=FlashcardsPaginatedResponse)
 def get_flashcards(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     search: str | None = Query(None),
 ):
-    query = db.query(Flashcard)
+    # ✅ показываем только флешкарты текущего пользователя
+    query = db.query(Flashcard).filter(Flashcard.user_id == current_user.id)
 
     if search:
         pattern = f"%{search}%"
@@ -159,6 +160,7 @@ def get_flashcards(
     items = query.offset(skip).limit(limit).all()
 
     return {"total": total, "items": items}
+
 
 @app.get("/flashcards/{flashcard_id}", response_model=FlashcardResponse)
 def get_flashcard(
@@ -175,9 +177,6 @@ def get_flashcard(
 def get_flashcard_statuses():
     return [status.value for status in FlashcardStatusEnum]
 
-@app.get("/flashcards/languages")
-def get_flashcard_languages():
-    return [lang.value for lang in LanguagesEnum]
 
 @app.put("/flashcards/{flashcard_id}", response_model=FlashcardResponse)
 def update_flashcard(
@@ -215,14 +214,18 @@ def delete_flashcard(
 
 @app.post("/languages", response_model=LanguageResponse, status_code=201)
 def create_language(language: LanguageCreate, db: Session = Depends(get_db)):
-    # language - это объект LanguageCreate, достаем строку
     existing_language = db.query(Languages).filter(Languages.code == language.code).first()
 
     if existing_language:
         return existing_language
 
-    new_language = Languages(code=language.code, name=language.name)
+    new_language = Languages(code=language.code)
     db.add(new_language)
     db.commit()
     db.refresh(new_language)
     return new_language
+
+@app.get("/languages", response_model=list[LanguageResponse])
+def get_languages(db: Session = Depends(get_db)):
+    languages = db.query(Languages).all()
+    return languages

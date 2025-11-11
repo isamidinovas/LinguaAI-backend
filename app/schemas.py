@@ -77,8 +77,8 @@ class FlashcardCreate(BaseModel):
 
 class FlashcardResponse(BaseModel):
     id: int
-    language_code: str  
-    topic:str
+    language_code: str | None
+    topic:str | None
     question: str
     answer: str
     status: str
