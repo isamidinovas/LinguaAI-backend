@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from jose import JWTError, jwt
 from fastapi import APIRouter 
-
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
 from app.database import get_db, Base, engine
 from app.models import User, Flashcard, Languages
 from app.schemas import (
@@ -12,13 +14,13 @@ from app.schemas import (
     FlashcardCreate, FlashcardResponse, 
     UserWithFlashcardsResponse, FlashcardStatusEnum,
     LanguageResponse, LanguageCreate,
-    FlashcardsPaginatedResponse
+    FlashcardsPaginatedResponse, AIMessageRequest
 )
 from app.auth import (
     verify_password, create_access_token, 
     get_password_hash, SECRET_KEY, ALGORITHM
 )
-
+load_dotenv()
 # Создать таблицы, если их нет
 Base.metadata.create_all(bind=engine)
 
@@ -235,11 +237,92 @@ def get_languages(db: Session = Depends(get_db)):
     return languages
 
 
+# Роутер для AI 
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+chat_router = APIRouter(prefix="/chat", tags=["Chat"])
+@chat_router.post("/message")
+async def chat_with_ai(
+    request: AIMessageRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    message_text = request.message.lower()  # сразу в нижний регистр
+
+    if "последние 5 флешкарт" in message_text:
+        flashcards = (
+            db.query(Flashcard)
+            .filter(
+                Flashcard.user_id == current_user.id,
+                Flashcard.status != FlashcardStatusEnum.DONE  # исключаем изученные
+            )
+            .order_by(Flashcard.created_at.desc())
+            .limit(5)
+            .all()
+        )
+
+        if not flashcards:
+            return {"response": "У тебя пока нет неизученных флешкарт 😅"}
+
+        cards_text = "\n".join(
+            [f"{f.topic or 'Без темы'} — {f.question}: {f.answer}" for f in flashcards]
+        )
+        return {"response": f"Вот твои последние 5 неизученных флешкарт:\n{cards_text}"}
+
+    elif "все неизученные флешкарты" in message_text:
+        flashcards = (
+            db.query(Flashcard)
+            .filter(
+                Flashcard.user_id == current_user.id,
+                Flashcard.status != FlashcardStatusEnum.DONE
+            )
+            .order_by(Flashcard.created_at.desc())
+            .all()
+        )
+
+        if not flashcards:
+            return {"response": "У тебя пока нет неизученных флешкарт 😅"}
+
+        cards_text = "\n".join(
+            [f"{f.topic or 'Без темы'} — {f.question}: {f.answer}" for f in flashcards]
+        )
+        return {"response": f"Вот все твои неизученные флешкарты:\n{cards_text}"}
+
+    elif "изученные флешкарты" in message_text.lower():
+        flashcards = (
+            db.query(Flashcard)
+            .filter(
+                Flashcard.user_id == current_user.id,
+                Flashcard.status == FlashcardStatusEnum.DONE  # <- именно значение enum
+            )
+            .order_by(Flashcard.created_at.desc())
+            .all()
+        )
+        
+        if not flashcards:
+            return {"response": "У тебя пока нет изученных флешкарт 😅"}
+
+        cards_text = "\n".join(
+            [f"{f.topic or 'Без темы'} — {f.question}: {f.answer}" for f in flashcards]
+        )
+        return {"response": f"Вот твои изученные флешкарты:\n{cards_text}"}
+
+    # Остальные сообщения отправляем в Gemini
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(request.message)
+        return {"response": response.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== Подключение роутеров ==========
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(flashcards_router)
 app.include_router(languages_router)
+app.include_router(chat_router)
 
 
 # ========== Главная страница ==========

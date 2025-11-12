@@ -106,3 +106,6 @@ class FlashcardsPaginatedResponse(BaseModel):
 
 
 
+class AIMessageRequest(BaseModel):
+    message: str    
+
