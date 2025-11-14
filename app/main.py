@@ -20,12 +20,26 @@ from app.auth import (
     verify_password, create_access_token, 
     get_password_hash, SECRET_KEY, ALGORITHM
 )
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Response
+
 load_dotenv()
 # Создать таблицы, если их нет
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+origins = [
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ========== OAuth2 и текущий пользователь ==========
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -74,19 +88,39 @@ def signup(user: UserSignup, db: Session = Depends(get_db)):
         "user": {"full_name": new_user.full_name, "email": new_user.email}
     }
 
-@auth_router.post("/login", response_model=Token)
-def login(user: UserLogin, db: Session = Depends(get_db)):
+@auth_router.post("/login")
+def login(user: UserLogin, response: Response, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.full_name == user.full_name).first()
-    if not db_user:
+    if not db_user or not verify_password(user.password, db_user.password):
         raise HTTPException(status_code=400, detail="Invalid full name or password")
-    
-    if not verify_password(user.password, db_user.password):
-        raise HTTPException(status_code=400, detail="Invalid full name or password")
-    
+
     access_token = create_access_token({"sub": db_user.full_name})
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    # Устанавливаем HttpOnly cookie
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # локально без https
+        max_age=3600
+    )
+
+    return {"message": "Login successful"}
 
 
+@auth_router.post("/logout")
+def logout(response: Response):
+    # Устанавливаем cookie с пустым значением и max_age=0, чтобы удалить её
+    response.delete_cookie(
+        key="access_token",
+        path="/"
+    )
+    return {"message": "Logged out successfully"}
+
+    
+def logout():
+    return {"message": "Logout successful"} 
 # Роутер для пользователей
 users_router = APIRouter(prefix="/users", tags=["Users"])
 
